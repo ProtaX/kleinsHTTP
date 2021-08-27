@@ -1,25 +1,17 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
-#include <thread>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <iostream>
-#include <list>
-#include <future>
-#include <unistd.h>
-
 #include "../connectionBase/connectionBase.h"
-#include "../packet/packet.h"
+#include "../nativeSocket/nativeSocket.h"
 
 namespace kleins {
     class tcpConnection : public connectionBase
     {
     private:
-        int connectionfd;
+        nativeSocket *skt;
 
     public:
-        tcpConnection(int connectionid);
+        tcpConnection(nativeSocket *s);
         ~tcpConnection();
 
         virtual bool getAlive();

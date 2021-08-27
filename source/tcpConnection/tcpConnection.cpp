@@ -1,8 +1,12 @@
 #include "tcpConnection.h"
 
-kleins::tcpConnection::tcpConnection(int connectionid)
+#include "../packet/packet.h"
+
+#include <unistd.h>
+
+kleins::tcpConnection::tcpConnection(nativeSocket *s)
 {
-    connectionfd = connectionid;
+    skt = s;
 }
 
 kleins::tcpConnection::~tcpConnection()
@@ -13,11 +17,11 @@ kleins::tcpConnection::~tcpConnection()
 
 bool kleins::tcpConnection::getAlive()
 {
-    int error = 0;
-    socklen_t len = sizeof (error);
-    int retval = getsockopt (connectionfd, SOL_SOCKET, SO_ERROR, &error, &len);
+    int error_opt = 0;
+    size_t error_opt_len = sizeof(error_opt);
+    SKT_ERROR err = skt->getOpt(OPT_LEVEL::SOCKET, SKT_OPTION::ERROR_, &error_opt, &error_opt_len);
 
-    return (error | retval) == 0;
+    return (!error_opt && err == SKT_ERROR::NONE);
 }
 
 void kleins::tcpConnection::tick()
@@ -25,15 +29,16 @@ void kleins::tcpConnection::tick()
     packet* packetBuffer = new packet;
 
     packetBuffer->data.resize(4096);
-    packetBuffer->size = recv( connectionfd , (char*)&packetBuffer->data[0], 4096, MSG_DONTWAIT);
+    auto res = skt->recv(4096, &packetBuffer->data[0], MSG_FLAGS::DONTWAIT);
     
-    if(packetBuffer->size == -1)
+    if(res.second != SKT_ERROR::NONE)
     {
         delete packetBuffer;
         usleep(20000);
         return;
     }
 
+    packetBuffer->size = res.first;
     packetBuffer->data.resize(packetBuffer->size);
 
     this->onRecieveCallback(std::unique_ptr<packet>(packetBuffer));
@@ -41,10 +46,10 @@ void kleins::tcpConnection::tick()
 
 void kleins::tcpConnection::sendData(const char* data, int datalength)
 {
-    send(connectionfd, data, datalength, 0);
+    skt->send(data, datalength, MSG_FLAGS::NONE);
 }
 
 void kleins::tcpConnection::close_socket()
 {
-    close(connectionfd);
+    skt->close();
 }
