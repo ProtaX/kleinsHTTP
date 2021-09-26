@@ -1,71 +1,53 @@
 #include "tcpSocket.h"
 
-#include "../tcpConnection/tcpConnection.h"
+kleins::tcpSocket::tcpSocket(const char* listenAddress, const int listenPort) {
+  address.sin_family = AF_INET;
 
-kleins::tcpSocket::tcpSocket(std::string_view listenAddress, uint16_t listenPort) :
-    skt(AI_FAMILY::INET, AI_SOCKTYPE::STREAM, AI_PROTOCOL::TCP)
-{
-
-    auto hint = addrInfo::builder().family(AI_FAMILY::INET)
-                                   .socktype(AI_SOCKTYPE::STREAM)
-                                   .protocol(AI_PROTOCOL::TCP)
-                                   .get();
-    std::list<addrInfo> addresses;
-    auto err = hint->getAddrInfo(listenAddress, std::to_string(listenPort), addresses);
-    if (err != AI_ERROR::NONE) {
-        perror("getAddrInfo");
-        exit(EXIT_FAILURE);
-    }
-
-    bool addrFound = false;
-    for (auto &address : addresses) {
-        SKT_ERROR bind_err = skt.bind(address);
-        if (bind_err != SKT_ERROR::NONE)
-            continue;
-        addrFound = true;
-        break;
-    }
-
-    if (!addrFound) {
-        perror("bind");
-        exit(EXIT_FAILURE);
-    }
+  address.sin_port = htons(listenPort);
+  inet_aton(listenAddress, (in_addr*)&address.sin_addr.s_addr);
 }
 
-kleins::tcpSocket::~tcpSocket()
-{
+kleins::tcpSocket::~tcpSocket() {
+  close(socketfd);
 }
 
-bool kleins::tcpSocket::tick()
-{
-    auto [newConnection, err] = skt.accept();
-    tcpConnection* conn = new tcpConnection(newConnection);
-    newConnectionCallback(conn); 
+bool kleins::tcpSocket::tick() {
+  int newConnection;
 
-    return newConnection->valid();
+  newConnection = accept(socketfd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
+  tcpConnection* conn = new tcpConnection(newConnection);
+  newConnectionCallback(conn);
+
+  return newConnection;
 }
 
-std::future<bool> kleins::tcpSocket::init()
-{
-    auto init_async = [this](){
+std::future<bool> kleins::tcpSocket::init() {
+  auto init_async = [this]() {
+    socketfd = socket(AF_INET, SOCK_STREAM, 0);
 
-        int opt = 1;
-        SKT_ERROR err = skt.setOpt(OPT_LEVEL::SOCKET,
-                                   SKT_OPTION::REUSEADDR,
-                                   &opt, sizeof(opt));
-        if (err != SKT_ERROR::NONE) {
-            std::cerr << "Error setting socket opts" << std::endl;
-            return false;
-        }
+    if (!socketfd) {
+      std::cerr << "Error creating socket file descriptor" << std::endl;
+      return false;
+    }
 
-        err = skt.listen(3);
-        if (err != SKT_ERROR::NONE) {
-            std::cerr << "Error listening on socket" << std::endl;
-            return false;
-        }
+    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT | SO_KEEPALIVE, &opt, sizeof(opt))) {
+      std::cerr << "Error setting socket opts" << std::endl;
+      return false;
+    }
 
-        return true;
-    };
+    if (bind(socketfd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+      std::cerr << "Error binding socket" << std::endl;
+      return false;
+    }
+    if (listen(socketfd, 3) < 0) {
+      std::cerr << "Error listening on socket" << std::endl;
+      return false;
+    }
 
-    return std::async(std::launch::async, init_async);
+    addrlen = sizeof(address);
+
+    return true;
+  };
+
+  return std::async(std::launch::async, init_async);
 }

@@ -1,32 +1,35 @@
 #ifndef TCPSOCKET_H
 #define TCPSOCKET_H
 
+#include <arpa/inet.h>
 #include <future>
-#include <memory>
-#include <string_view>
+#include <iostream>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <thread>
 
-#include <stdint.h>
-
-#include "../nativeSocket/nativeSocket.h"
+#ifndef SINGLE_HEADER
 #include "../socketBase/socketBase.h"
-
+#include "../tcpConnection/tcpConnection.h"
+#endif
 
 namespace kleins {
-    class tcpSocket : public socketBase
-    {
-    private:
-        nativeSocket skt;
+class tcpSocket : public socketBase {
+private:
+  int socketfd;
+  int opt;
+  struct sockaddr_in address;
+  int addrlen;
 
-        virtual bool tick() final;
+  bool tick();
 
-    public:
-        tcpSocket(std::string_view listenAddress, uint16_t listenPort);
-        tcpSocket(const tcpSocket&) = delete;
-        ~tcpSocket();
+public:
+  tcpSocket(const char* listenAddress, const int listenPort);
+  ~tcpSocket();
 
-        virtual std::future<bool> init() final;
-    };
-    
+  std::future<bool> init();
 };
+
+}; // namespace kleins
 
 #endif

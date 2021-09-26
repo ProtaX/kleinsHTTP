@@ -1,55 +1,51 @@
 #include "tcpConnection.h"
 
-#include "../packet/packet.h"
-
-#include <unistd.h>
-
-kleins::tcpConnection::tcpConnection(nativeSocket *s)
-{
-    skt = s;
+kleins::tcpConnection::tcpConnection(int connectionid) {
+  connectionfd = connectionid;
+  resetTimeoutTimer();
 }
 
-kleins::tcpConnection::~tcpConnection()
-{
-    close_socket();
-    join();
+kleins::tcpConnection::~tcpConnection() {
+  close_socket();
+  join();
 }
 
-bool kleins::tcpConnection::getAlive()
-{
-    int error_opt = 0;
-    size_t error_opt_len = sizeof(error_opt);
-    SKT_ERROR err = skt->getOpt(OPT_LEVEL::SOCKET, SKT_OPTION::ERROR_, &error_opt, &error_opt_len);
+bool kleins::tcpConnection::getAlive() {
+  int error = 0;
+  socklen_t len = sizeof(error);
+  int retval = getsockopt(connectionfd, SOL_SOCKET, SO_ERROR, &error, &len);
 
-    return (!error_opt && err == SKT_ERROR::NONE);
+  return (error | retval) == 0;
 }
 
-void kleins::tcpConnection::tick()
-{
-    packet* packetBuffer = new packet;
+void kleins::tcpConnection::tick() {
+  packet* packetBuffer = new packet;
 
-    packetBuffer->data.resize(4096);
-    auto res = skt->recv(4096, &packetBuffer->data[0], MSG_FLAGS::DONTWAIT);
-    
-    if(res.second != SKT_ERROR::NONE)
-    {
-        delete packetBuffer;
-        usleep(20000);
-        return;
+  packetBuffer->data.resize(4096);
+  packetBuffer->size = recv(connectionfd, (char*)&packetBuffer->data[0], 4096, MSG_DONTWAIT);
+
+  if (packetBuffer->size == -1) {
+    delete packetBuffer;
+    usleep(20000);
+
+    if (getTimeout()) {
+      close_socket();
     }
 
-    packetBuffer->size = res.first;
-    packetBuffer->data.resize(packetBuffer->size);
+    return;
+  }
 
-    this->onRecieveCallback(std::unique_ptr<packet>(packetBuffer));
+  resetTimeoutTimer();
+
+  packetBuffer->data.resize(packetBuffer->size);
+
+  this->onRecieveCallback(std::unique_ptr<packet>(packetBuffer));
 }
 
-void kleins::tcpConnection::sendData(const char* data, int datalength)
-{
-    skt->send(data, datalength, MSG_FLAGS::NONE);
+void kleins::tcpConnection::sendData(const char* data, int datalength) {
+  send(connectionfd, data, datalength, 0);
 }
 
-void kleins::tcpConnection::close_socket()
-{
-    skt->close();
+void kleins::tcpConnection::close_socket() {
+  close(connectionfd);
 }
